@@ -10,10 +10,10 @@
 
 ## Intake progress
 - **Path:** Fast Track
-- **Phases complete:** 0 (seed), 1 (product definition — ratified Checkpoint A), 2 (personas, glossary, contexts — ratified Checkpoint B), 3 (agent roster — ratified Checkpoint C)
-- **In progress:** Phase 4 (rules → Checkpoint D) — proposed matrix below, awaiting ratification incl. the PII call.
-- **Next:** Phase 5 (hooks → E), Phase 6 (review + go/no-go), then generation.
-- **Not yet decided:** rules matrix (incl. final PII decision), hooks, output mode (A stamp-in-place vs B publish plugin).
+- **Phases complete:** 0 (seed), 1 (Checkpoint A), 2 (Checkpoint B), 3 roster (Checkpoint C), 4 rules incl. PII=ON (Checkpoint D), 5 hooks (Checkpoint E), 6 ADR ledger (Checkpoint F) + output mode.
+- **Output mode:** A — stamp in place (write setup into this repo; no plugin/Phase 8).
+- **Next:** Phase 7 generation — **awaiting explicit `go`**. Nothing final written yet.
+- **All decisions ratified.** Remaining action is generation on `go`.
 
 ## Given vs. inferred
 - **[given]** (client stated): High-end pet food/snacks/toys retailer. Primary user is the company's Buyer. Money moment = agents + rules that automate data aggregation and display for fast Buyer decisions; manage inventory; decide new orders when sales are high; pull underperforming products; reports are the cornerstone for leadership & buyers. Excel is heavily used. Company uses **Fulfil** (ERP) and saves reports to **SharePoint**.
@@ -51,28 +51,37 @@ Six agents: three domain (one per bounded context) + three read-only cross-cutti
 
 Hand-offs (PO-routed, no agent-to-agent calls): `SnapshotAggregated` → merchandising-analyst; `RecommendationsReady` → report-publisher; `ReportPublished` → Buyer/PO. Code changes → test-engineer + code-reviewer (+ security-compliance-reviewer when creds/external/data touched).
 
-## Rules Matrix (PROPOSED — Checkpoint D pending, not yet ratified)
-Recommendation: all eight ON. `legal-compliance` flagged as the one defensibly switchable OFF; `no-pii` recommended ON because Fulfil (the data source) holds customer PII even though the product deliberately avoids it.
+## Rules Matrix (RATIFIED — Checkpoint D)
+All eight ON. **PII = ON confirmed** because Fulfil (the data source) holds customer PII even though the product deliberately avoids it. `legal-compliance` kept ON (was the one candidate for OFF). No rules switched OFF.
 
-| Rule | Proposed | Severity | Binds | Note |
+| Rule | On/Off | Severity | Binds | Note |
 |---|---|---|---|---|
 | no-pii | ON | Critical/MUST | global | Aggregate at source; never pull/store/log customer-level PII from Fulfil. |
 | security-secrets | ON | Critical/MUST | global | Fulfil API keys + SharePoint auth via env/secrets only. |
 | destructive-actions | ON | Critical/MUST | agents w/ Bash | No rm -rf / overwrite / force-ops without approval. |
 | human-in-the-loop | ON | High/MUST | report-publisher + outward | SharePoint publish + any order action human-gated. |
 | external-services | ON | High/MUST | data-integrator, report-publisher | Read-only default vs Fulfil; SharePoint writes gated. |
-| legal-compliance | ON (optional) | High/SHOULD | global | Dependency licensing + personal-data retention. Candidate for OFF. |
+| legal-compliance | ON | High/SHOULD | global | Dependency licensing + personal-data retention. |
 | code-quality-testing | ON | Medium/MUST | code-writing agents | Build/lint/tests pass; bug fix needs failing→passing test. |
 | scope-discipline | ON | Medium/MUST | all subagents | Stay in lane; hand off through PO. |
 
-## Hooks (ratified)
-_Pending — decided in Phase 5 (Checkpoint E)._
+## Hooks (ratified — Checkpoint E)
+Four accepted (jq present, so they enforce):
+- **guard-secret-files** (PreToolUse `Edit|Write`) — hard-blocks writes to `.env`/`*.pem`/keys/credential files. Enforces security-secrets.
+- **guard-dangerous-commands** (PreToolUse `Bash`) — hard-blocks `rm -rf`, force-push, `git reset --hard`, `DROP`/`TRUNCATE`, `curl … | sh`. Enforces destructive-actions.
+- **guard-no-pii** (PreToolUse `Bash|WebFetch`) — scans OUTBOUND actions only for PII; allowlists synthetic test ranges. Enforces no-pii.
+- **session-context** (SessionStart) — prints product summary, agent list, git status into each new session.
 
-## ADR ledger (draft)
-1. Agent boundaries follow bounded contexts (one agent per context). — accepted at Checkpoint C
-2. Data Integration isolated as its own context (Anti-Corruption Layer around Fulfil). — accepted at Checkpoint C
-3. Merchandising Intelligence holds both reorder and assortment logic in one context for v1. — accepted at Checkpoint C
-_(Stack choice, any contested rule call — e.g. legal-compliance OFF — and output mode to be added in Phases 4–6.)_
+Deferred: format-file, inject-context, run-affected-tests (add once the stack stabilizes).
+
+## ADR ledger (ratified — Checkpoint F)
+- **0000** Record significant decisions as ADRs (seed). — Accepted
+- **0001** Agent boundaries follow bounded contexts (one agent per context); Data Integration isolated behind an anti-corruption layer around Fulfil; Merchandising keeps reorder + assortment together for v1. — Accepted
+- **0002** Tech stack: Python pipeline; file-based snapshots (CSV/Parquet), no database in v1 (Fulfil is system of record); openpyxl for Excel; Fulfil REST API + Microsoft Graph for SharePoint. — Accepted
+- **0003** Promote security-secrets, destructive-actions, no-pii from guidance to hard-hook enforcement. — Accepted
+- **0004** Output mode A — stamp in place (no plugin/marketplace). — Accepted
+
+No contested rule-OFF ADR needed: all rules kept ON.
 
 ## How this was generated
-Intake run on 2026-07-19. Path: Fast Track. Output mode: not yet decided. Re-run the intake to revise any phase.
+Intake run on 2026-07-19. Path: Fast Track. Output mode: A (stamp in place). Re-run the intake to revise any phase.
