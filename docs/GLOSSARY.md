@@ -3,10 +3,10 @@
 > Single source of truth for what our words mean. If code, docs, or an agent uses a term below,
 > it means exactly this. Add a row before you add the concept.
 >
-> **Status: DRAFT** — ratified at intake Checkpoint B (2026-07-19). The "Owning Agent" column is
-> *proposed* and becomes authoritative only after the roster is ratified at Checkpoint C.
+> **Status: DRAFT** — glossary ratified at Checkpoint B; owning-agent assignments ratified at
+> Checkpoint C (2026-07-19). Rules & hooks still pending (Phases 4–5).
 
-| Term | Definition (1–2 sentences, plain language) | Bounded Context | Owning Agent (proposed) |
+| Term | Definition (1–2 sentences, plain language) | Bounded Context | Owning Agent |
 |------|--------------------------------------------|-----------------|-------------------------|
 | Product | A tracked item we carry — food, snack, or toy — identified by a SKU. | (shared) | — |
 | DataSnapshot | One clean, aggregated pull of sales + inventory from Fulfil at a point in time; everything downstream is computed from it. | Data Integration | data-integrator |

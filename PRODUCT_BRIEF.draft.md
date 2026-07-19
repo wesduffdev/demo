@@ -10,9 +10,10 @@
 
 ## Intake progress
 - **Path:** Fast Track
-- **Phases complete:** 0 (seed), 1 (product definition — ratified Checkpoint A), 2 (personas, glossary, contexts — ratified Checkpoint B)
-- **Next:** Phase 3 (agent roster → Checkpoint C), Phase 4 (rules → D), Phase 5 (hooks → E), Phase 6 (review + go/no-go)
-- **Not yet decided:** agent roster, rules matrix (incl. the PII decision), hooks, output mode.
+- **Phases complete:** 0 (seed), 1 (product definition — ratified Checkpoint A), 2 (personas, glossary, contexts — ratified Checkpoint B), 3 (agent roster — ratified Checkpoint C)
+- **In progress:** Phase 4 (rules → Checkpoint D) — proposed matrix below, awaiting ratification incl. the PII call.
+- **Next:** Phase 5 (hooks → E), Phase 6 (review + go/no-go), then generation.
+- **Not yet decided:** rules matrix (incl. final PII decision), hooks, output mode (A stamp-in-place vs B publish plugin).
 
 ## Given vs. inferred
 - **[given]** (client stated): High-end pet food/snacks/toys retailer. Primary user is the company's Buyer. Money moment = agents + rules that automate data aggregation and display for fast Buyer decisions; manage inventory; decide new orders when sales are high; pull underperforming products; reports are the cornerstone for leadership & buyers. Excel is heavily used. Company uses **Fulfil** (ERP) and saves reports to **SharePoint**.
@@ -36,17 +37,42 @@
 - **Summary:** three contexts — **Data Integration** (Fulfil → clean DataSnapshot), **Merchandising Intelligence** (core: velocity, reorder points, reorder/slow-mover/overstock guidance), **Reporting & Publishing** (Excel reports → SharePoint). Events: `SnapshotAggregated` → `RecommendationsReady` → `ReportPublished`.
 - **Aggregates (inferred, not ratified):** DataSnapshot; ReorderPlan + AssortmentReview; Report.
 
-## Rules Matrix (ratified)
-_Pending — decided in Phase 4 (Checkpoint D). Note: the PII decision is explicitly required and not yet made._
+## Agent roster (ratified — Checkpoint C)
+Six agents: three domain (one per bounded context) + three read-only cross-cutting.
+
+| Agent | Context | Mission | Owns | Invoke when | Tools | Model | Autonomy |
+|---|---|---|---|---|---|---|---|
+| data-integrator | Data Integration | Pull & validate Fulfil data into a clean DataSnapshot | DataSnapshot | New data cycle / Fulfil refresh | Read, Write, Edit, Bash, Glob, Grep | sonnet | ask (external + creds) |
+| merchandising-analyst | Merchandising Intelligence (core) | Compute velocity/reorder points; reorder, slow-mover & overstock guidance | ReorderPlan, AssortmentReview | SnapshotAggregated | Read, Write, Edit, Bash, Glob, Grep | opus | free (internal) |
+| report-publisher | Reporting & Publishing | Build Excel reports & publish to SharePoint | Report | RecommendationsReady | Read, Write, Edit, Bash, Glob | sonnet | ask (outward publish) |
+| test-engineer | cross-cutting | Write/run tests; guard aggregation & calc correctness | test suite | After any logic change | Read, Write, Edit, Bash, Glob, Grep | sonnet | free |
+| code-reviewer | cross-cutting | Review diffs for correctness/clarity/convention | (read-only) | Before merge | Read, Grep, Glob, Bash | sonnet | read-only |
+| security-compliance-reviewer | cross-cutting | Enforce rules; check secret/credential handling for Fulfil & SharePoint | (read-only) | Creds/external/data changes | Read, Grep, Glob, Bash, WebSearch | opus | read-only |
+
+Hand-offs (PO-routed, no agent-to-agent calls): `SnapshotAggregated` → merchandising-analyst; `RecommendationsReady` → report-publisher; `ReportPublished` → Buyer/PO. Code changes → test-engineer + code-reviewer (+ security-compliance-reviewer when creds/external/data touched).
+
+## Rules Matrix (PROPOSED — Checkpoint D pending, not yet ratified)
+Recommendation: all eight ON. `legal-compliance` flagged as the one defensibly switchable OFF; `no-pii` recommended ON because Fulfil (the data source) holds customer PII even though the product deliberately avoids it.
+
+| Rule | Proposed | Severity | Binds | Note |
+|---|---|---|---|---|
+| no-pii | ON | Critical/MUST | global | Aggregate at source; never pull/store/log customer-level PII from Fulfil. |
+| security-secrets | ON | Critical/MUST | global | Fulfil API keys + SharePoint auth via env/secrets only. |
+| destructive-actions | ON | Critical/MUST | agents w/ Bash | No rm -rf / overwrite / force-ops without approval. |
+| human-in-the-loop | ON | High/MUST | report-publisher + outward | SharePoint publish + any order action human-gated. |
+| external-services | ON | High/MUST | data-integrator, report-publisher | Read-only default vs Fulfil; SharePoint writes gated. |
+| legal-compliance | ON (optional) | High/SHOULD | global | Dependency licensing + personal-data retention. Candidate for OFF. |
+| code-quality-testing | ON | Medium/MUST | code-writing agents | Build/lint/tests pass; bug fix needs failing→passing test. |
+| scope-discipline | ON | Medium/MUST | all subagents | Stay in lane; hand off through PO. |
 
 ## Hooks (ratified)
 _Pending — decided in Phase 5 (Checkpoint E)._
 
 ## ADR ledger (draft)
-1. Agent boundaries follow bounded contexts (standard). — proposed
-2. Data Integration isolated as its own context (Anti-Corruption Layer around Fulfil). — proposed
-3. Merchandising Intelligence holds both reorder and assortment logic in one context for v1. — proposed
-_(Stack choice, rules calls, and output mode to be added in later phases.)_
+1. Agent boundaries follow bounded contexts (one agent per context). — accepted at Checkpoint C
+2. Data Integration isolated as its own context (Anti-Corruption Layer around Fulfil). — accepted at Checkpoint C
+3. Merchandising Intelligence holds both reorder and assortment logic in one context for v1. — accepted at Checkpoint C
+_(Stack choice, any contested rule call — e.g. legal-compliance OFF — and output mode to be added in Phases 4–6.)_
 
 ## How this was generated
 Intake run on 2026-07-19. Path: Fast Track. Output mode: not yet decided. Re-run the intake to revise any phase.

@@ -1,10 +1,10 @@
 # Context Map
 
-> **Status: DRAFT** — bounded contexts & domain events ratified at intake Checkpoint B (2026-07-19).
-> Owning-agent assignments are *proposed* until the roster is ratified at Checkpoint C.
+> **Status: DRAFT** — contexts & domain events ratified at Checkpoint B; owning agents & full
+> roster ratified at Checkpoint C (2026-07-19). Rules & hooks still pending (Phases 4–5).
 
 ## Contexts
-| Bounded Context | Subdomain type | Owning Agent (proposed) | Aggregate Root(s) |
+| Bounded Context | Subdomain type | Owning Agent | Aggregate Root(s) |
 |-----------------|----------------|-------------------------|-------------------|
 | Data Integration | supporting | data-integrator | DataSnapshot |
 | Merchandising Intelligence | core | merchandising-analyst | ReorderPlan, AssortmentReview |
