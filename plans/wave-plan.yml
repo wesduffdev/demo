@@ -1,0 +1,413 @@
+# ============================================================================
+# Buyer's Desk — v1 Delivery Wave Plan
+# ============================================================================
+# A dependency-ordered build plan. Each WAVE is a set of tickets that can be
+# worked in PARALLEL. A wave may begin only once every ticket in the waves it
+# depends on is complete — a wave holds the next tickets unblocked by the
+# previous ones. Waves are topological layers of the `depends_on` graph, so
+# `depends_on` is the source of truth; the wave grouping is derived from it.
+#
+# Intended use: source of truth for generating Trello cards (one card per
+# ticket). Suggested Trello mapping is under `trello_mapping` below.
+# ----------------------------------------------------------------------------
+
+meta:
+  product: Buyer's Desk
+  version: v1
+  one_liner: >-
+    Aggregate Fulfil sales & inventory into reorder/assortment guidance and
+    reports, published to SharePoint. The system recommends; the human Buyer
+    commits every order.
+  generated_by: Product Owner (orchestrator)
+  stack_assumption: Python, file-based DataSnapshots, no DB in v1 (docs/adr/0002)
+  legend:
+    id: Stable ticket key (also the card title prefix).
+    context: Owning bounded context (docs/context-map.md).
+    owner: Specialist agent that executes the ticket (.claude/agents/).
+    depends_on: Tickets that must be DONE before this one may start.
+    emits: Domain event raised on completion (drives the next hop).
+    rules: Project rules this ticket must satisfy at the boundary.
+
+# --- Assumptions (labeled for human confirmation) ---------------------------
+assumptions:
+  - "[inferred] Ticket granularity ~= one reviewable unit of work each; split further if a card grows too large."
+  - "[inferred] Cross-cutting review/test tickets are placed at the earliest wave their inputs exist, not batched at the end."
+  - "[given] No auto-purchasing and no auto-publish: BD-014 output is advisory; BD-020 publish is human-gated."
+  - "[given] No customer PII leaves Fulfil: BD-011 aggregates at product level and strips PII before anything downstream."
+  - "[inferred] Single Fulfil environment, read-only credentials; SharePoint target location provided by the human before BD-020 runs."
+
+# --- Domain events (hand-off triggers; see docs/context-map.md) -------------
+domain_events:
+  SnapshotAggregated:  { produced_by: BD-011, consumed_by: merchandising-analyst }
+  RecommendationsReady: { produced_by: [BD-014, BD-015], consumed_by: report-publisher }
+  ReportPublished:     { produced_by: BD-020, consumed_by: human (Buyer) }
+
+# ============================================================================
+# WAVES
+# ============================================================================
+waves:
+
+  - wave: 0
+    name: Observability Foundation
+    gate: none — this is the root wave; runs first, before every other ticket.
+    tickets:
+      - id: BD-000
+        title: Orchestrator run logging & observability
+        context: platform (cross-cutting)
+        owner: data-integrator
+        depends_on: []
+        description: >-
+          Establish orchestrator run logging. For each cycle, record what the
+          orchestrator (Product Owner) is doing, which specialist agents run, how
+          many tokens each consumed, and how long each took to complete. Write to
+          timestamped .txt files in a repo-root logs/ folder, and check them in.
+        acceptance_criteria:
+          - "Each run writes a timestamped .txt log in logs/ capturing orchestrator actions and the agent hand-off sequence."
+          - "Per-agent entries record agent name, token usage, and elapsed time to completion."
+          - "logs/ is committed (checked in) — not gitignored — and contains no secrets or customer PII."
+          - "Runs before every other ticket; downstream work assumes the logging harness exists."
+        rules: [security-secrets, no-pii, code-quality-testing]
+
+  - wave: 1
+    name: Project Foundation
+    gate: BD-000 complete (logging harness exists).
+    tickets:
+      - id: BD-001
+        title: Repo scaffolding & Python project setup
+        context: platform (cross-cutting)
+        owner: data-integrator
+        depends_on: [BD-000]
+        description: >-
+          Create the Python package layout, dependency/venv setup (pyproject),
+          Makefile, and the data/ + output/ working dirs. Establishes the tree
+          every later ticket writes into.
+        acceptance_criteria:
+          - "`make install` / venv bootstrap succeeds from a clean clone."
+          - "Package imports cleanly; empty module stubs per bounded context."
+          - "output/ and data/samples/ honored by .gitignore (no real data committed)."
+        rules: [security-secrets, code-quality-testing]
+
+  - wave: 2
+    name: Rails — CI, Config, Contracts
+    gate: BD-001 complete (package tree exists).
+    tickets:
+      - id: BD-002
+        title: CI, lint/format & test harness
+        context: platform (cross-cutting)
+        owner: test-engineer
+        depends_on: [BD-001]
+        description: >-
+          pytest scaffolding, formatter + linter, and a CI gate that runs on PRs.
+          The correctness backbone for every calculation ticket.
+        acceptance_criteria:
+          - "`make test` runs pytest green on an empty suite."
+          - "Lint/format check fails CI on violation; no commits to default branch."
+        rules: [code-quality-testing]
+
+      - id: BD-003
+        title: Config & credential loading
+        context: Data Integration / Reporting (shared)
+        owner: data-integrator
+        depends_on: [BD-001]
+        description: >-
+          Env-var / secrets-manager based config for Fulfil and SharePoint.
+          Presence checks only — never print secret values. Provides `.env.example`.
+        acceptance_criteria:
+          - "Missing credential fails fast with a clear message; value never logged."
+          - "No secret literals in source, tests, or committed config."
+        rules: [security-secrets, no-pii]
+
+      - id: BD-004
+        title: Shared domain schemas & data contracts
+        context: cross-cutting
+        owner: data-integrator
+        depends_on: [BD-001]
+        description: >-
+          Define the shape of DataSnapshot, ReorderPlan, AssortmentReview, and
+          Report as typed contracts so producers/consumers agree before code lands.
+        acceptance_criteria:
+          - "Each aggregate has a versioned schema with field-level types."
+          - "Downstream owners can extend their aggregate without breaking the contract."
+        rules: [code-quality-testing]
+
+  - wave: 3
+    name: Boundary Modules — Fulfil in, Excel/SharePoint out
+    gate: Wave 2 complete (config + contracts exist).
+    tickets:
+      - id: BD-005
+        title: Fulfil API client (read-only connection & auth)
+        context: Data Integration
+        owner: data-integrator
+        depends_on: [BD-003]
+        description: >-
+          Read-only client that authenticates to Fulfil using BD-003 config.
+          Default to sandbox/test endpoint; live calls are human-authorized.
+        acceptance_criteria:
+          - "Authenticates and performs a read-only health/ping against Fulfil."
+          - "No write/mutation methods; respects rate limits."
+        rules: [external-services, security-secrets]
+
+      - id: BD-006
+        title: Excel workbook / report engine (formatting base)
+        context: Reporting & Publishing
+        owner: report-publisher
+        depends_on: [BD-004]
+        description: >-
+          Reusable Excel-compatible workbook builder (headers, styles, sheet
+          layout) that all three reports render through for consistent formatting.
+        acceptance_criteria:
+          - "Produces a valid .xlsx from a sample Report contract."
+          - "Consistent styling primitives reused by BD-017/018/019."
+        rules: [code-quality-testing]
+
+      - id: BD-007
+        title: SharePoint publisher module (write client, human-gated)
+        context: Reporting & Publishing
+        owner: report-publisher
+        depends_on: [BD-003]
+        description: >-
+          Client that can place a file in a SharePoint location. Prepares/stages
+          only — the actual publish call is gated behind explicit human approval.
+        acceptance_criteria:
+          - "Can resolve target location and DRAFT an upload without sending."
+          - "Send step requires explicit approval; nothing publishes on its own."
+        rules: [human-in-the-loop, external-services, security-secrets]
+
+  - wave: 4
+    name: Data Pull & Boundary Security Review
+    gate: Wave 3 complete (client + publisher modules exist).
+    tickets:
+      - id: BD-008
+        title: Pull sales data from Fulfil
+        context: Data Integration
+        owner: data-integrator
+        depends_on: [BD-005, BD-004]
+        description: Pull raw sales/transaction data via the Fulfil client into a staged, schema-shaped form.
+        acceptance_criteria:
+          - "Sales pull returns rows conforming to the BD-004 sales schema."
+          - "Partial/empty responses handled without crashing the cycle."
+        rules: [no-pii, external-services]
+
+      - id: BD-009
+        title: Pull inventory / stock data from Fulfil
+        context: Data Integration
+        owner: data-integrator
+        depends_on: [BD-005, BD-004]
+        description: Pull current stock-on-hand and inventory attributes via the Fulfil client.
+        acceptance_criteria:
+          - "Inventory pull returns rows conforming to the BD-004 inventory schema."
+          - "SKU identifiers reconcile with the sales pull's keys."
+        rules: [no-pii, external-services]
+
+      - id: BD-010
+        title: Security & compliance review — credentials & external calls
+        context: cross-cutting (read-only)
+        owner: security-compliance-reviewer
+        depends_on: [BD-005, BD-007]
+        description: >-
+          Review the two external boundaries (Fulfil read, SharePoint write) for
+          secret handling, least privilege, and PII exposure before data flows.
+        acceptance_criteria:
+          - "No secret is logged/echoed; creds sourced from env/secrets manager."
+          - "Findings filed back to PO; blocking issues resolved before Wave 5."
+        rules: [security-secrets, no-pii, external-services]
+
+  - wave: 5
+    name: Build the DataSnapshot  →  SnapshotAggregated
+    gate: Wave 4 complete (both pulls succeed; security review clear).
+    tickets:
+      - id: BD-011
+        title: Validate, reconcile & aggregate into DataSnapshot
+        context: Data Integration
+        owner: data-integrator
+        depends_on: [BD-008, BD-009]
+        emits: SnapshotAggregated
+        description: >-
+          Join sales + inventory, validate/reconcile, and aggregate to a clean
+          product-level DataSnapshot. Strip customer PII — no customer records
+          past this point; supplier contacts treated as access-controlled.
+        acceptance_criteria:
+          - "Produces a single DataSnapshot artifact keyed by SKU/product."
+          - "Zero customer PII in the snapshot, logs, or any derived file."
+          - "Reconciliation flags SKUs present in one source but not the other."
+        rules: [no-pii, code-quality-testing]
+
+  - wave: 6
+    name: First Analysis & First Report
+    gate: BD-011 complete (SnapshotAggregated raised).
+    tickets:
+      - id: BD-012
+        title: "Tests: DataSnapshot correctness & aggregation"
+        context: cross-cutting
+        owner: test-engineer
+        depends_on: [BD-011, BD-002]
+        description: Regression tests on aggregation, reconciliation, and the PII-stripping guarantee, using synthetic fixtures.
+        acceptance_criteria:
+          - "Aggregation math covered with fixed synthetic inputs/outputs."
+          - "A test asserts no PII fields survive into the snapshot."
+        rules: [code-quality-testing, no-pii]
+
+      - id: BD-013
+        title: Sales velocity computation
+        context: Merchandising Intelligence
+        owner: merchandising-analyst
+        depends_on: [BD-011]
+        description: Compute per-SKU sales velocity from the snapshot — the input to both reorder and slow-mover logic.
+        acceptance_criteria:
+          - "Velocity computed per SKU over the configured window."
+          - "Handles zero-sales and new-SKU edge cases deterministically."
+        rules: [code-quality-testing]
+
+      - id: BD-017
+        title: Sales performance report
+        context: Reporting & Publishing
+        owner: report-publisher
+        depends_on: [BD-006, BD-011]
+        description: Render the sales-performance report from the snapshot via the Excel engine.
+        acceptance_criteria:
+          - "Report reflects snapshot figures; opens cleanly in Excel."
+          - "Formatting consistent with the BD-006 base."
+        rules: [code-quality-testing]
+
+  - wave: 7
+    name: Recommendation Engines
+    gate: BD-013 complete (velocity available).
+    tickets:
+      - id: BD-014
+        title: Reorder points & ReorderPlan (what / how much / when)
+        context: Merchandising Intelligence
+        owner: merchandising-analyst
+        depends_on: [BD-013]
+        description: >-
+          Sales-velocity reorder points (no ML in v1). Flag SKUs crossing a
+          threshold and produce a ReorderPlan of quantity + timing suggestions.
+          Advisory only — the Buyer commits every order.
+        acceptance_criteria:
+          - ">=90% of SKUs crossing a reorder threshold are flagged each cycle."
+          - "Output is clearly advisory; no order is placed anywhere."
+        rules: [human-in-the-loop, scope-discipline]
+
+      - id: BD-015
+        title: Slow-mover / overstock detection & AssortmentReview
+        context: Merchandising Intelligence
+        owner: merchandising-analyst
+        depends_on: [BD-013]
+        description: Detect underperformers/overstock from velocity + stock and produce an AssortmentReview flagging candidates to pull.
+        acceptance_criteria:
+          - "A slow-mover/overstock list is produced every cycle, no manual step."
+          - "Each flagged SKU carries the reason (low velocity / excess cover)."
+        rules: [scope-discipline]
+
+  - wave: 8
+    name: Math Verification & Recommendation Reports  →  RecommendationsReady
+    gate: BD-014 & BD-015 complete (RecommendationsReady raised on their completion).
+    tickets:
+      - id: BD-016
+        title: "Tests: velocity & reorder/assortment math"
+        context: cross-cutting
+        owner: test-engineer
+        depends_on: [BD-014, BD-015, BD-002]
+        description: Correctness tests for velocity, reorder-point thresholds, and slow-mover/overstock logic with synthetic fixtures.
+        acceptance_criteria:
+          - "Threshold-crossing flagged deterministically for known inputs."
+          - "No test weakened/hardcoded to pass; edge cases covered."
+        rules: [code-quality-testing]
+
+      - id: BD-018
+        title: Low-stock / reorder report
+        context: Reporting & Publishing
+        owner: report-publisher
+        depends_on: [BD-006, BD-014]
+        description: Render the reorder report from the ReorderPlan via the Excel engine.
+        acceptance_criteria:
+          - "Report lists flagged SKUs with suggested qty/timing."
+          - "Marked advisory; opens cleanly in Excel."
+        rules: [code-quality-testing]
+
+      - id: BD-019
+        title: Slow-mover / overstock report
+        context: Reporting & Publishing
+        owner: report-publisher
+        depends_on: [BD-006, BD-015]
+        description: Render the slow-mover/overstock report from the AssortmentReview via the Excel engine.
+        acceptance_criteria:
+          - "Report lists pull candidates with reasons; opens cleanly in Excel."
+        rules: [code-quality-testing]
+
+  - wave: 9
+    name: Publish & Report-Path Tests
+    gate: Reports (BD-017/018/019) and publisher (BD-007) complete.
+    tickets:
+      - id: BD-020
+        title: Publish reports to SharePoint (human-gated)
+        context: Reporting & Publishing
+        owner: report-publisher
+        depends_on: [BD-007, BD-017, BD-018, BD-019]
+        emits: ReportPublished
+        description: >-
+          Wire the three finished reports through the publisher to the correct
+          SharePoint location. Present a preview (target + payload); publish only
+          after explicit human approval.
+        acceptance_criteria:
+          - "Reports land in the correct SharePoint location, consistent formatting."
+          - "Publish blocked until a human approves the previewed target/payload."
+        rules: [human-in-the-loop, external-services, security-secrets]
+
+      - id: BD-021
+        title: "Tests: report generation & publish path (mock SharePoint)"
+        context: cross-cutting
+        owner: test-engineer
+        depends_on: [BD-017, BD-018, BD-019, BD-007, BD-002]
+        description: Verify each report renders and that the publish path targets the right location, using a mocked SharePoint client.
+        acceptance_criteria:
+          - "Publish path asserts target location without a live call."
+          - "Each report renders from a synthetic recommendation set."
+        rules: [code-quality-testing, external-services]
+
+  - wave: 10
+    name: End-to-End Cycle
+    gate: Publish path live (BD-020) and engines complete.
+    tickets:
+      - id: BD-022
+        title: End-to-end cycle orchestration
+        context: platform (cross-cutting)
+        owner: data-integrator
+        depends_on: [BD-011, BD-014, BD-015, BD-020]
+        description: >-
+          Single entry point that runs a full cycle: pull → snapshot → analyze →
+          report → (human-approved) publish. Turns hours of Excel into minutes.
+        acceptance_criteria:
+          - "One command runs the full chain on synthetic data end to end."
+          - "Weekly report set produced in minutes; publish remains human-gated."
+        rules: [human-in-the-loop, scope-discipline]
+
+  - wave: 11
+    name: Final Review
+    gate: BD-022 complete (full pipeline runs).
+    tickets:
+      - id: BD-023
+        title: Final code review & integration review
+        context: cross-cutting (read-only)
+        owner: code-reviewer
+        depends_on: [BD-022]
+        description: Review the integrated pipeline for correctness, clarity, and convention before v1 is called done.
+        acceptance_criteria:
+          - "Diff reviewed against Definition of Done; issues filed to PO."
+          - "No unrelated refactors, debug prints, or commented-out code."
+        rules: [code-quality-testing, scope-discipline]
+
+# ============================================================================
+# Suggested Trello mapping (for when the board is connected)
+# ============================================================================
+trello_mapping:
+  board: Buyer's Desk — v1
+  lists: [Backlog, "Wave Ready", In Progress, Review, Done]
+  card_per: ticket
+  card_title: "{id} — {title}"
+  labels_from: [context, owner]
+  wave_representation: >-
+    Add a `Wave N` label (or a checklist on a per-wave card) so a wave's cards
+    can be filtered and pulled into "Wave Ready" together once the prior wave is Done.
+  notes:
+    - "depends_on -> add as a checklist 'Blocked by' on each card for traceability."
+    - "Do not create cards until the Trello MCP server is authenticated."
