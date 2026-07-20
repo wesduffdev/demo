@@ -1,0 +1,25 @@
+Buyer's Desk — Orchestrator Run Log
+Run ID:  run-20260720T004700Z
+Started: 2026-07-20T00:47:00Z (UTC)
+
+[ACTIONS]  what the orchestrator did (hand-off sequence)
+  2026-07-20T00:47:00Z  orchestrator    Read Trello board 'Buyer's Desk - v1'; BD-001 Done -> next = Wave 2 (Rails: BD-002/003/004), all unblocked
+  2026-07-20T00:47:00Z  orchestrator    Created branch feat/wave-2-rails off default (BD-000+BD-001 already merged, PRs #3/#4); moved BD-002/003/004 Backlog -> In Progress
+  2026-07-20T00:47:00Z  orchestrator    Delegated BD-002 to test-engineer FIRST (establishes ruff/pytest/CI config the other two must conform to)
+  2026-07-20T00:47:00Z  orchestrator    Delegated BD-003 + BD-004 to data-integrator in PARALLEL (disjoint new-file sets, stdlib-only) to avoid write races on shared config files
+  2026-07-20T00:47:00Z  orchestrator    BD-003 escalated: guard-secret-files.sh + .gitignore block .env.example. Got human approval for a narrow carve-out; applied it and wrote the placeholder template
+  2026-07-20T00:47:00Z  orchestrator    Integration verified: ruff check/format clean, 67 tests green; hook still blocks real .env* and prod.env.example (exit 2), allows only .env.example (exit 0)
+  2026-07-20T00:47:00Z  orchestrator    Routed staged Wave 2 diff to code-reviewer + security-compliance-reviewer in parallel: APPROVE + PASS
+  2026-07-20T00:47:00Z  orchestrator    Applied 3 non-blocking hardening notes (tightened hook glob, CI least-privilege permissions, dropped dead noqa); re-verified green. Deferred SHA/exact dep pinning as policy
+  2026-07-20T00:47:00Z  orchestrator    Committed BD-002/003/004 as 3 per-ticket commits on feature branch (excluded .mcp.json + WAR PRD); pushed; opened PR #5. Default-branch merge stays human-gated
+  2026-07-20T00:47:00Z  orchestrator    Moved BD-002/003/004 In Progress -> Review
+
+[AGENTS]  specialist runs — name / tokens / elapsed / status
+  agent=test-engineer (BD-002 CI/lint/test harness)  tokens=60767  elapsed=270.8s  status=completed  note=ruff + pytest config + PR CI gate; make ci green, 67 passed
+  agent=data-integrator (BD-003 config & creds)  tokens=65968  elapsed=329.3s  status=completed  note=env config, presence-only, redacted repr; .env.example carve-out escalated to human
+  agent=data-integrator (BD-004 contracts)  tokens=75177  elapsed=335.4s  status=completed  note=4 versioned contracts, no-PII test-enforced; 29 passed
+  agent=code-reviewer (Wave 2 diff)  tokens=54909  elapsed=116.5s  status=completed  note=APPROVE; 2 optional nits only
+  agent=security-compliance-reviewer (Wave 2 diff)  tokens=57540  elapsed=193.9s  status=completed  note=PASS; 4 non-blocking hardening notes, 3 applied
+
+Finished: 2026-07-20T00:47:00Z (UTC)
+Totals:   agents=5  tokens=314361  elapsed=1245.9s
