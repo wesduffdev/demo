@@ -1,0 +1,27 @@
+Buyer's Desk — Orchestrator Run Log
+Run ID:  run-20260720T011806Z
+Started: 2026-07-20T01:18:06Z (UTC)
+
+[ACTIONS]  what the orchestrator did (hand-off sequence)
+  2026-07-20T01:18:06Z  orchestrator    Read Trello board 'Buyer's Desk - v1' + plans/wave-plan.yml; Wave 2 (BD-002/003/004) merged (PR #5) and Done -> Wave 3 gate satisfied; BD-005/006/007 unblocked (deps BD-003/BD-004 Done)
+  2026-07-20T01:18:06Z  orchestrator    Created branch feat/wave-3-boundary-modules off updated default (origin/buyers-desk-setup, which now contains merged Wave 2); moved BD-005/006/007 Backlog -> In Progress
+  2026-07-20T01:18:06Z  orchestrator    Round 1 (parallel): delegated BD-005 to data-integrator (data_integration/ package) and BD-006 to report-publisher (reporting/ Excel engine) — disjoint packages, different owners, no new deps (openpyxl/requests already declared)
+  2026-07-20T01:18:06Z  orchestrator    Round 2 (sequential): delegated BD-007 to report-publisher AFTER BD-006 completed, to avoid a write race on the shared reporting/__init__.py
+  2026-07-20T01:18:06Z  orchestrator    Integration verified: ruff clean, 126 tests green; reporting/__init__ cleanly carries both BD-006 and BD-007 exports
+  2026-07-20T01:18:06Z  orchestrator    Routed the Wave 3 diff to code-reviewer + security-compliance-reviewer in parallel: security PASS (2 optional notes); code-review REQUEST-CHANGES (1 blocking docstring + optional nits)
+  2026-07-20T01:18:06Z  orchestrator    Applied the blocking fix + 2 boundary-hardening notes via the owning agents in parallel — report-publisher: docstring correctness + reject '..' path-traversal in dest_folder; data-integrator: runtime read-only guard in _request. Deferred cosmetic/consumer-side nits (get() non-JSON handling -> BD-008/009; health() alias; redundant strip)
+  2026-07-20T01:18:06Z  orchestrator    Re-verified: ruff clean, 128 tests green
+  2026-07-20T01:18:06Z  orchestrator    Committed BD-005/006/007 as 3 per-ticket commits (reporting/__init__ split so each commit is coherent; excluded untracked .mcp.json + WAR PRD); pushed; opened PR. Default-branch merge stays human-gated
+  2026-07-20T01:18:06Z  orchestrator    Moved BD-005/006/007 In Progress -> Review
+
+[AGENTS]  specialist runs — name / tokens / elapsed / status
+  agent=data-integrator (BD-005 Fulfil API client)  tokens=48543  elapsed=121.1s  status=completed  note=read-only GET-only client; X-API-KEY from BD-003 config, never logged; sandbox-default; mock-tested
+  agent=report-publisher (BD-006 Excel report engine)  tokens=63166  elapsed=181.8s  status=completed  note=reusable openpyxl workbook builder + styling primitives for BD-017/018/019; pure builder, no SharePoint coupling
+  agent=report-publisher (BD-007 SharePoint publisher)  tokens=79717  elapsed=281.4s  status=completed  note=staged/draft-only; publish refuses without explicit approval; client_secret never leaked; mock-tested
+  agent=security-compliance-reviewer (Wave 3 diff)  tokens=58161  elapsed=144.6s  status=completed  note=PASS; 2 non-blocking notes (path-traversal defense-in-depth, token handling)
+  agent=code-reviewer (Wave 3 diff)  tokens=86073  elapsed=332.0s  status=completed  note=REQUEST-CHANGES; 1 blocking docstring fix + optional nits; solid otherwise
+  agent=data-integrator (BD-005 read-only guard fix)  tokens=29411  elapsed=44.6s  status=completed  note=runtime guard so read-only is enforced not conventional; +1 test
+  agent=report-publisher (BD-006/007 review fixes)  tokens=45714  elapsed=109.7s  status=completed  note=docstring correctness + path-traversal rejection; +1 test
+
+Finished: 2026-07-20T01:18:06Z (UTC)
+Totals:   agents=7  tokens=410785  elapsed=1215.2s
