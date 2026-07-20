@@ -15,8 +15,9 @@ of BD-011's reconcile+aggregate step, not this one.
 No customer PII, ever
 ----------------------
 Fields are read from each raw Fulfil record via an explicit **allow-list**
-(:data:`_SKU_KEYS`, :data:`_NAME_KEYS`, :data:`_QUANTITY_KEYS`) — never by
-copying the record wholesale. Any customer/order-identity field a Fulfil
+(:data:`~buyers_desk.data_integration._staging_pull._SKU_KEYS`,
+:data:`_NAME_KEYS`, :data:`_QUANTITY_KEYS`) — never by copying the record
+wholesale. Any customer/order-identity field a Fulfil
 sales record happens to carry (customer name, email, address, order/party
 id, etc.) is structurally never read and therefore never reaches a
 ``SalesRow``, satisfying the no-pii rule by construction rather than by a
@@ -47,15 +48,18 @@ contract:
   ``FULFIL_BASE_URL``/config, not by anything in this module — see
   ``buyers_desk/config.py``.)
 * Each record is assumed to be a JSON object exposing the SKU/code under one
-  of :data:`_SKU_KEYS` (optionally nested one level under a ``"product"``
-  object), a display name under one of :data:`_NAME_KEYS`, and a numeric
-  quantity under one of :data:`_QUANTITY_KEYS`. Unknown/extra fields are
-  ignored; a record missing a usable SKU or quantity is skipped, not raised.
+  of :data:`~buyers_desk.data_integration._staging_pull._SKU_KEYS` (optionally
+  nested one level under a ``"product"`` object), a display name under one of
+  :data:`_NAME_KEYS`, and a numeric quantity under one of
+  :data:`_QUANTITY_KEYS`. Unknown/extra fields are ignored; a record missing
+  a usable SKU or quantity is skipped, not raised.
 * Pagination is assumed to follow a generic ``limit``/``offset`` convention.
   It is always bounded: at most :data:`DEFAULT_MAX_PAGES` pages of at most
   ``page_size`` records each are ever requested per call to
-  :func:`pull_sales_rows`, so a single pull can never become an unbounded
-  loop of paid API calls (see ``.claude/rules/external-services.md``).
+  :func:`pull_sales_rows` (paginated via the shared
+  :func:`~buyers_desk.data_integration._staging_pull.paginate` helper), so a
+  single pull can never become an unbounded loop of paid API calls (see
+  ``.claude/rules/external-services.md``).
 
 Partial / empty / malformed responses never crash the pull: they are
 recorded as human-readable, content-free diagnostics on
@@ -73,10 +77,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, ClassVar, List, Mapping, Optional, Sequence
+from typing import Any, ClassVar, List, Mapping, Optional
 
+from buyers_desk.data_integration._staging_pull import (
+    _extract_sku,
+    _first_present,
+    _nested_product,
+    paginate,
+)
 from buyers_desk.data_integration.fulfil_client import FulfilClient
-from buyers_desk.data_integration.sku import normalize_sku
 
 __all__ = [
     "SALES_PATH",
@@ -104,10 +113,10 @@ DEFAULT_MAX_PAGES = 20
 # Allow-lists: only these keys are ever read off a raw Fulfil record. Any
 # other key present on the record (including a customer/order-identity
 # field) is never inspected, copied, or logged — see the no-pii note above.
-_SKU_KEYS: tuple[str, ...] = ("sku", "code", "product_code")
+# The SKU allow-list (and its nested-"product" lookup) lives in
+# ``_staging_pull`` since BD-009's inventory staging must match it exactly.
 _NAME_KEYS: tuple[str, ...] = ("product_name", "name", "description")
 _QUANTITY_KEYS: tuple[str, ...] = ("units_sold", "quantity_sold", "quantity", "qty")
-_NESTED_PRODUCT_KEY = "product"
 
 
 @dataclass(frozen=True)
@@ -142,28 +151,6 @@ class SalesStagingBatch:
     skipped_count: int = 0
     warnings: List[str] = field(default_factory=list)
     schema_version: int = SalesRow.SCHEMA_VERSION
-
-
-def _first_present(record: Mapping[str, Any], keys: Sequence[str]) -> Any:
-    for key in keys:
-        value = record.get(key)
-        if value is not None:
-            return value
-    return None
-
-
-def _nested_product(record: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
-    nested = record.get(_NESTED_PRODUCT_KEY)
-    return nested if isinstance(nested, Mapping) else None
-
-
-def _extract_sku(record: Mapping[str, Any]) -> Optional[str]:
-    raw = _first_present(record, _SKU_KEYS)
-    if raw is None:
-        nested = _nested_product(record)
-        if nested is not None:
-            raw = _first_present(nested, _SKU_KEYS)
-    return normalize_sku(raw)
 
 
 def _extract_product_name(record: Mapping[str, Any]) -> Optional[str]:
@@ -227,26 +214,6 @@ def from_fulfil_record(record: Any) -> Optional[SalesRow]:
     return SalesRow(sku=sku, units_sold=units_sold, product_name=_extract_product_name(record))
 
 
-def _coerce_page_records(payload: Any) -> Optional[list[Any]]:
-    """Normalize one page's raw JSON payload to a list of raw records.
-
-    Returns ``[]`` for an empty/``None`` body (nothing more to read, not an
-    error). Returns ``None`` when ``payload`` is not a list and not a
-    recognized ``{"records": [...]}``-style envelope — a genuinely malformed
-    page the caller should stop on rather than misinterpret.
-    """
-    if payload is None:
-        return []
-    if isinstance(payload, list):
-        return payload
-    if isinstance(payload, Mapping):
-        for key in ("records", "result", "results", "data"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return value
-    return None
-
-
 def pull_sales_rows(
     client: FulfilClient,
     *,
@@ -264,49 +231,24 @@ def pull_sales_rows(
     is handled by skipping/flagging (via ``skipped_count``/``warnings``) —
     this function never raises for bad *data*. ``FulfilAPIError`` and
     ``FulfilConnectionError`` from the client itself (auth/network failure)
-    are intentionally left to propagate — see the module docstring.
+    are intentionally left to propagate — see the module docstring. The
+    shared pagination/allow-list plumbing lives in ``_staging_pull.paginate``
+    (BD-024); this function only supplies the sales-specific record mapping.
     """
-    if page_size <= 0:
-        raise ValueError("page_size must be positive")
-    if max_pages <= 0:
-        raise ValueError("max_pages must be positive")
-
-    batch = SalesStagingBatch(source_path=path, pulled_at=datetime.now(timezone.utc))
-    base_params = dict(params) if params else {}
-    offset = 0
-
-    for page_number in range(1, max_pages + 1):
-        page_params = {**base_params, "limit": page_size, "offset": offset}
-        payload = client.get(path, params=page_params)
-        records = _coerce_page_records(payload)
-
-        if records is None:
-            batch.warnings.append(
-                f"page {page_number}: response was not a list or a recognized envelope "
-                f"(type={type(payload).__name__}); stopped pulling further pages"
-            )
-            break
-
-        if not records:
-            break
-
-        for index, record in enumerate(records):
-            row = from_fulfil_record(record)
-            if row is None:
-                batch.skipped_count += 1
-                batch.warnings.append(
-                    f"page {page_number} record {index}: skipped (not a usable sales record)"
-                )
-                continue
-            batch.rows.append(row)
-
-        if len(records) < page_size:
-            break
-
-        offset += page_size
-    else:
-        batch.warnings.append(
-            f"reached max_pages={max_pages} with a full last page; more data may remain"
-        )
-
-    return batch
+    pulled_at = datetime.now(timezone.utc)
+    result = paginate(
+        client,
+        path,
+        params=params,
+        page_size=page_size,
+        max_pages=max_pages,
+        map_record=from_fulfil_record,
+        record_label="sales record",
+    )
+    return SalesStagingBatch(
+        source_path=path,
+        pulled_at=pulled_at,
+        rows=result.rows,
+        skipped_count=result.skipped_count,
+        warnings=result.warnings,
+    )

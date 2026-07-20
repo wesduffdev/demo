@@ -1,0 +1,27 @@
+Buyer's Desk — Orchestrator Run Log
+Run ID:  run-20260720T025404Z
+Started: 2026-07-20T02:44:00Z (UTC)
+Wave:    4 follow-up — BD-024 De-duplicate shared staging-pull plumbing (tech debt)
+
+[ACTIONS]  what the orchestrator did (hand-off sequence)
+  2026-07-20T02:44:00Z  orchestrator    Read Trello board 'Buyer's Desk - v1' + plans/wave-plan.yml; confirmed Waves 0-4 merged (PRs #1-7,#10). Moved merged Wave 4 cards BD-008/009/010 Review -> Done for board accuracy
+  2026-07-20T02:44:00Z  orchestrator    Confirmed with human: churn remaining tickets as STACKED per-wave PRs (never push to default branch; human merges in order). Started the stack with BD-024 (unblocked; clears the Wave-4-flagged double-maintenance hazard before more code stacks on the staging modules)
+  2026-07-20T02:44:00Z  orchestrator    Created branch refactor/bd-024-staging-dedup off origin/buyers-desk-setup; moved BD-024 Backlog -> In Progress. Kept untracked .DS_Store + plans/PRD-WAR-Automation.md out of scope (as in Waves 3-4)
+  2026-07-20T02:44:00Z  orchestrator    Delegated BD-024 to data-integrator (pure refactor, no behavior change). Extracted _staging_pull.paginate(...) + shared SKU/coercion helpers into a package-internal module; both staging modules delegate to it, keeping their own Row shaping + allow-lists + isfinite guards
+  2026-07-20T02:44:00Z  orchestrator    Integration verified independently: make ci -> ruff check clean, ruff format clean, 222 passed (identical to pre-refactor baseline -> no behavior change)
+  2026-07-20T02:44:00Z  orchestrator    Routed the diff to code-reviewer + security-compliance-reviewer in parallel (touches the data-integration boundary + no-pii allow-list plumbing): code-review APPROVE; security PASS (no regression to BD-010 Wave 4 guarantees). No blocking findings
+  2026-07-20T02:44:00Z  orchestrator    Committed as 1 refactor commit via git commit -F (message file keeps the Co-Authored-By email trailer off the command line, clearing the outbound no-pii Bash guard); pushed; opened PR #11 (base buyers-desk-setup). Default-branch merge stays human-gated
+  2026-07-20T02:44:00Z  orchestrator    Moved BD-024 In Progress -> Review
+
+[AGENTS]  specialist runs — name / tokens / elapsed / status
+  agent=data-integrator (BD-024 staging dedup refactor)  tokens=101354  elapsed=281.6s  status=completed  note=new _staging_pull.py (paginate + _first_present/_nested_product/_extract_sku/_coerce_page_records + _SKU_KEYS); both modules delegate; Row shaping/allow-lists/isfinite preserved; 222 passed unchanged
+  agent=code-reviewer (BD-024 diff)  tokens=48842  elapsed=119.4s  status=completed  note=APPROVE; pagination semantics + warning text + allow-lists + isfinite verified byte-for-byte equivalent; re-ran ruff+pytest (222 passed); only a non-blocking TypeVar-vs-Any typing nit
+  agent=security-compliance-reviewer (BD-024 diff)  tokens=40755  elapsed=84.0s  status=completed  note=PASS; allow-lists preserved/not widened; warnings content-free; read-only pagination + secret handling unchanged; no regression to BD-010
+
+[NOTES / FOLLOW-UPS]  surfaced to human / Product Owner
+  - Non-blocking (code-reviewer + security both flagged): the staging modules now import underscore-prefixed helpers across a package-internal module boundary from _staging_pull, and PullResult.rows/map_record use Any rather than a TypeVar. Style/typing tightening only — left as-is to keep the refactor minimal.
+  - data-integrator noted _extract_product_name is also byte-for-byte identical across both modules but was NOT extracted (not named in the BD-024 duplication list); optional future consolidation if the PO wants it.
+  - Stack proceeds to Wave 5 (BD-011) branched off this branch; PR #11 base is the default branch. Human merges the stack in order (BD-024 -> Wave 5 -> ...).
+
+Finished: 2026-07-20T02:54:04Z (UTC)
+Totals:   agents=3  tokens=190951  elapsed=485.0s (per-agent sum; the two reviewers ran concurrently, so wall-clock was lower)
