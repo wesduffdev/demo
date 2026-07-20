@@ -1,0 +1,39 @@
+# ── Confidential / real business data — NEVER commit ──────────────────────────
+# Real company data (financials, Fulfil exports, executive reports) must never be
+# committed or pushed. See .claude/rules/no-pii.md, .claude/rules/security-secrets.md,
+# and docs/adr/0003. Keep real samples in data/samples/ LOCAL ONLY; commit only
+# synthetic, clearly-fake fixtures.
+data/samples/*.xlsx
+data/samples/*.xls
+data/samples/*.xlsm
+data/samples/*.csv
+data/samples/*.parquet
+
+# ── Generated report output — local only, never commit ────────────────────────
+# Bob writes the finished WAR workbook here (see plans/PRD-WAR-Automation.md).
+# Real financials — keep out of git.
+output/*
+!output/README.md
+
+# ── Secrets / credentials ─────────────────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+**/secrets/*
+**/credentials*
+
+# ── Python artifacts (v1 stack — docs/adr/0002) ───────────────────────────────
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+# Packaging outputs from `pip install -e .` / builds (BD-001)
+*.egg-info/
+.eggs/
+build/
+dist/

@@ -1,0 +1,36 @@
+# Buyer's Desk — v1 project definition (BD-001).
+#
+# Stack per docs/adr/0002: Python, file-based snapshots (CSV/Parquet), no
+# database in v1; Excel reports via openpyxl; Fulfil via its REST API and
+# SharePoint via Microsoft Graph (both over HTTP). Credentials come from the
+# environment / a secrets manager only — never hardcoded (security-secrets).
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "buyers-desk"
+version = "0.1.0"
+description = "Aggregate Fulfil sales & inventory into reorder/assortment guidance and Excel reports published to SharePoint. Recommends only; the human Buyer commits every order."
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "Buyer's Desk team" }]
+dependencies = [
+  "openpyxl>=3.1",  # Excel-compatible report generation (ADR-0002)
+  "requests>=2.31", # HTTP for Fulfil REST + Microsoft Graph (ADR-0002)
+]
+
+[project.optional-dependencies]
+# Test tooling only. The full lint/format + CI harness is hardened in BD-002.
+dev = [
+  "pytest>=8.0",
+]
+
+# Flat layout: the two importable packages live at the repo root. `observability`
+# is the cross-cutting run-logging harness from BD-000; `buyers_desk` holds the
+# bounded-context packages. `tests/`, `data/`, `output/`, `logs/`, and `docs/`
+# are deliberately excluded from the distribution.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["buyers_desk*", "observability*"]
