@@ -15,8 +15,9 @@ the Excel work and (when connected) publishing to **SharePoint**.
 
 The boundary building blocks are in place — config/credential loading, a **read-only** Fulfil
 client, sales & inventory staging pulls, the Excel workbook engine, and the human-gated SharePoint
-publisher. The single end-to-end `run` command and unattended scheduling are still on the roadmap
-(see [Roadmap](#roadmap)).
+publisher. A **mock report command** (`make mock-report`) generates output from the local sample
+data today; the full live `pull → snapshot → analyze → report → publish` cycle and unattended
+scheduling are still on the roadmap (see [Roadmap](#roadmap)).
 
 **v1 runs on mock / local data — no live Fulfil pulls or real credentials are required to work in
 this repo.** The mock dataset is the sample WAR workbook,
@@ -42,6 +43,7 @@ make install      # create .venv and install the package (editable) + dev deps
 | Target | What it does |
 |---|---|
 | `make install` | Create `.venv`, install the package + dev deps |
+| `make mock-report` | Generate a report from the local mock data → `./output/` |
 | `make test` | Run the pytest suite |
 | `make lint` | `ruff check` |
 | `make format` | Apply `ruff format` |
@@ -74,57 +76,51 @@ It has 7 sheets: `Executive Summary`, `Store Inventory & Turn`, `Sales & Margin`
 > path above before running Mode A. See [`data/samples/README.md`](data/samples/README.md) and
 > [`.claude/rules/no-pii.md`](.claude/rules/no-pii.md).
 
-Load it with openpyxl (already a dependency) — `data_only=True` reads computed values rather than
-formulas:
+### 2. Generate the output
+
+One command reads the mock workbook and writes a formatted, Excel-openable report to `./output/`:
+
+```bash
+make mock-report
+# -> wrote output/WAR_<today>.xlsx
+```
+
+Equivalently, with options:
+
+```bash
+python -m buyers_desk.mock_report \
+    --source data/samples/WAR_Executive_Overview_6.29.26.xlsx \
+    --output-dir output \
+    --report-date 2026-06-29        # optional; defaults to today (UTC)
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--source` | `data/samples/WAR_Executive_Overview_6.29.26.xlsx` | Mock workbook to render |
+| `--output-dir` | `output` | Folder to write into (created if missing) |
+| `--report-date` | today (UTC) | Date used in the `WAR_<date>.xlsx` filename / report id |
+
+The command renders every sheet of the mock workbook faithfully through the shared report engine
+(`data_only=True`, so computed values are read, not formulas) — it does **not** yet compute KPIs,
+flags, or recommendations. That analysis (`aggregate → analyze → report`, BD-011+ / BD-022) is the
+roadmap wiring; today this exercises the full `mock data → Report → .xlsx` path with no credentials
+and no network. If the source file is missing (a fresh clone won't have it), the command exits with
+a clear message instead of a traceback.
+
+> The generated file lands in `./output/`, which is git-ignored — a mock render carries the source's
+> real figures, so **never commit it or paste its values**.
+
+To inspect the source directly instead of rendering it, load it with openpyxl (already a
+dependency):
 
 ```python
 from openpyxl import load_workbook
 
-MOCK = "data/samples/WAR_Executive_Overview_6.29.26.xlsx"
-wb = load_workbook(MOCK, read_only=True, data_only=True)
-
+wb = load_workbook("data/samples/WAR_Executive_Overview_6.29.26.xlsx", read_only=True, data_only=True)
 print(wb.sheetnames)
 # ['Executive Summary', 'Store Inventory & Turn', 'Sales & Margin',
 #  'Replenishment', 'TURN', 'Sales', 'DC trucks']
-
-for row in wb["Store Inventory & Turn"].iter_rows(values_only=True):
-    print(row)   # inspect the source rows the analysis reasons over
 wb.close()
-```
-
-Consuming these rows into a `DataSnapshot` and rendering the generated WAR
-(aggregate → analyze → report) is the roadmap wiring (BD-011+ / BD-022); today the workbook above is
-the mock input you develop and validate against.
-
-### 2. Render a report → `./output/`
-
-The workbook engine turns a `Report` into a real, Excel-openable `.xlsx` in the local `output/`
-folder (git-ignored). Rows here are illustrative synthetic values — **do not paste real figures from
-the mock workbook**:
-
-```python
-from datetime import datetime, timezone
-from buyers_desk.contracts import Report, ReportKind, ReportSheet
-from buyers_desk.reporting.workbook import write_workbook
-
-report = Report(
-    report_id="demo-0001",
-    kind=ReportKind.SALES_PERFORMANCE,
-    generated_at=datetime.now(timezone.utc),
-    sheets=[
-        ReportSheet(
-            name="Sales Performance",
-            headers=["SKU", "Product", "Units Sold", "On Hand"],
-            rows=[
-                ["SKU-001", "Grain-Free Salmon Dog Food 12lb", 1280, 340],
-                ["SKU-002", "Organic Catnip Toy", 940, 120],
-            ],
-        )
-    ],
-)
-
-path = write_workbook(report, "output/demo_report.xlsx")
-print("wrote", path)
 ```
 
 ### 3. Run the correctness suite (no data file needed)
