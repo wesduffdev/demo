@@ -18,6 +18,8 @@ output/*
 # ── Secrets / credentials ─────────────────────────────────────────────────────
 .env
 .env.*
+# Exception: the placeholder-only template IS committed (BD-003). Real .env* stay ignored above.
+!.env.example
 *.pem
 *.key
 *.p12
@@ -32,6 +34,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.ruff_cache/
 # Packaging outputs from `pip install -e .` / builds (BD-001)
 *.egg-info/
 .eggs/
