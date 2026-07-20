@@ -154,9 +154,7 @@ def test_agent_with_none_tokens_and_elapsed_renders_na_and_excluded_from_totals(
 
     # Totals: 2 agents total, but only the numeric agent contributes to sums.
     totals_line = next(line for line in text.splitlines() if line.startswith("Totals:"))
-    match = re.search(
-        r"Totals:\s+agents=(\d+)\s+tokens=(\d+)\s+elapsed=([\d.]+)s", totals_line
-    )
+    match = re.search(r"Totals:\s+agents=(\d+)\s+tokens=(\d+)\s+elapsed=([\d.]+)s", totals_line)
     assert match is not None, f"Totals line did not match expected shape: {totals_line!r}"
     agents_count, total_tokens, total_elapsed = match.groups()
 
@@ -173,9 +171,7 @@ def test_totals_sum_across_multiple_numeric_agents(tmp_path):
 
     text = run.render()
     totals_line = next(line for line in text.splitlines() if line.startswith("Totals:"))
-    match = re.search(
-        r"Totals:\s+agents=(\d+)\s+tokens=(\d+)\s+elapsed=([\d.]+)s", totals_line
-    )
+    match = re.search(r"Totals:\s+agents=(\d+)\s+tokens=(\d+)\s+elapsed=([\d.]+)s", totals_line)
     assert match is not None
     agents_count, total_tokens, total_elapsed = match.groups()
 
@@ -194,9 +190,7 @@ def test_no_agents_recorded_totals_are_zero(tmp_path):
     assert "(none recorded)" in agents_section
 
     totals_line = next(line for line in text.splitlines() if line.startswith("Totals:"))
-    match = re.search(
-        r"Totals:\s+agents=(\d+)\s+tokens=(\d+)\s+elapsed=([\d.]+)s", totals_line
-    )
+    match = re.search(r"Totals:\s+agents=(\d+)\s+tokens=(\d+)\s+elapsed=([\d.]+)s", totals_line)
     assert match is not None
     agents_count, total_tokens, total_elapsed = match.groups()
     assert agents_count == "0"
