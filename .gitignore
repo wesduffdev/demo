@@ -28,6 +28,12 @@ id_rsa*
 **/secrets/*
 **/credentials*
 
+# ── Local tooling / MCP config — never commit ─────────────────────────────────
+# .mcp.json wires up local MCP servers (e.g. Trello). Connecting an external
+# service is a per-developer, human-gated choice (see .claude/rules/external-services.md)
+# and the file may later hold endpoints/tokens — keep it local only.
+.mcp.json
+
 # ── Python artifacts (v1 stack — docs/adr/0002) ───────────────────────────────
 __pycache__/
 *.pyc
