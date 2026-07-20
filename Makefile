@@ -6,7 +6,7 @@ PYTHON := python3
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help install test lint format format-check ci check clean
+.PHONY: help install test lint format format-check ci check clean mock-report
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -19,6 +19,9 @@ install: ## Create the venv and install the package (editable) + dev deps
 
 test: ## Run the test suite
 	$(BIN)/pytest
+
+mock-report: ## Generate a report from local mock data into ./output/ (no creds)
+	$(BIN)/python -m buyers_desk.mock_report
 
 lint: ## Run ruff check (lint)
 	$(BIN)/ruff check .
