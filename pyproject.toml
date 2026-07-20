@@ -22,9 +22,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Test tooling only. The full lint/format + CI harness is hardened in BD-002.
+# Test + lint/format tooling (BD-002 hardens the CI harness).
 dev = [
   "pytest>=8.0",
+  "ruff>=0.6",
 ]
 
 # Flat layout: the two importable packages live at the repo root. `observability`
@@ -34,3 +35,19 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["buyers_desk*", "observability*"]
+
+# Explicit discovery so pytest never falls back to rootdir guessing (BD-002).
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Sane, conservative rule set: pyflakes + a pycodestyle subset + import-sort.
+# Deliberately excludes stricter opt-in families (e.g. pyupgrade/"UP",
+# flake8-bugbear/"B") so BD-002 (harness only) does not force unrelated
+# rewrites of pre-existing modules it does not own.
+select = ["E4", "E7", "E9", "F", "I"]

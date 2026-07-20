@@ -36,12 +36,12 @@ def _utc_now() -> datetime:
 # intentionally conservative — this is a safety net, not a substitute for only
 # passing metadata in the first place.
 _REDACTION_PATTERNS = (
-    re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"),   # email address
-    re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"),                            # OpenAI-style secret key
-    re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),                           # GitHub personal access token
-    re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"),                           # GitHub OAuth token
-    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),                               # AWS access key id
-    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+"),                    # bearer token
+    re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"),  # email address
+    re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"),  # OpenAI-style secret key
+    re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),  # GitHub personal access token
+    re.compile(r"\bgho_[A-Za-z0-9]{20,}\b"),  # GitHub OAuth token
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS access key id
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+"),  # bearer token
     re.compile(r"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*\S+"),  # key=value secret
 )
 
@@ -161,9 +161,7 @@ class RunLogger:
         ]
         if self._actions:
             for action in self._actions:
-                lines.append(
-                    f"  {_fmt_ts(action.ts)}  {action.actor:<14}  {action.message}"
-                )
+                lines.append(f"  {_fmt_ts(action.ts)}  {action.actor:<14}  {action.message}")
         else:
             lines.append("  (none recorded)")
 
