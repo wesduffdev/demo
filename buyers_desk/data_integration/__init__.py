@@ -10,8 +10,9 @@ clean snapshot is ready. No customer PII is carried past this boundary — the
 snapshot is aggregated at the Product level (see the no-pii rule).
 
 Scaffold only (BD-001). The Fulfil client landed in BD-005; the raw sales
-staging pull landed in BD-008. The raw inventory staging pull (BD-009) and
-the reconciled ``DataSnapshot`` build (BD-011) land in later wave tickets.
+staging pull landed in BD-008; the raw inventory staging pull landed in
+BD-009. The reconciled ``DataSnapshot`` build (BD-011) lands in a later
+wave ticket.
 """
 
 from __future__ import annotations
@@ -24,6 +25,19 @@ from buyers_desk.data_integration.fulfil_client import (
     FulfilAPIError,
     FulfilClient,
     FulfilConnectionError,
+)
+from buyers_desk.data_integration.inventory_staging import (
+    INVENTORY_PATH,
+    InventoryRow,
+    InventoryStagingBatch,
+    pull_inventory_rows,
+)
+from buyers_desk.data_integration.inventory_staging import (
+    # Aliased on import: both staging modules export a module-level
+    # `from_fulfil_record`, so re-exporting inventory's under its own name
+    # here avoids silently shadowing sales_staging's `from_fulfil_record`
+    # (imported below) at this package's top level.
+    from_fulfil_record as inventory_from_fulfil_record,
 )
 from buyers_desk.data_integration.sales_staging import (
     DEFAULT_MAX_PAGES,
@@ -51,5 +65,10 @@ __all__ = [
     "SALES_PATH",
     "DEFAULT_PAGE_SIZE",
     "DEFAULT_MAX_PAGES",
+    "InventoryRow",
+    "InventoryStagingBatch",
+    "inventory_from_fulfil_record",
+    "pull_inventory_rows",
+    "INVENTORY_PATH",
     "normalize_sku",
 ]
